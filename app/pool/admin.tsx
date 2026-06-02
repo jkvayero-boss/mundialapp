@@ -28,6 +28,8 @@ export default function AdminScreen() {
   const [bracketDate, setBracketDate] = useState('2026-06-29');
   const [bracketTime, setBracketTime] = useState('20:00');
   const [generating, setGenerating] = useState(false);
+  const [matchSchedule, setMatchSchedule] = useState<Record<number, { date: string; time: string }>>({});
+  const [fetchingSchedule, setFetchingSchedule] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem('uid').then(v => setUid(v ?? ''));
@@ -96,6 +98,43 @@ export default function AdminScreen() {
     else Alert.alert('✓', `${updated} ${t('syncedResults', locale)}`);
   }
 
+  async function fetchKnockoutSchedule() {
+    setFetchingSchedule(true);
+    try {
+      const res = await fetch('https://v3.football.api-sports.io/fixtures?league=1&season=2026', {
+        headers: { 'x-apisports-key': '95ea5f8bce0ce8bdeba48f077d4751e9' },
+      });
+      const data = await res.json();
+      if (data.errors?.requests || data.errors?.rateLimit) {
+        Alert.alert('', locale === 'es' ? 'Límite diario de la API alcanzado' : 'API daily limit reached');
+        return;
+      }
+      const fixtures: any[] = data.response ?? [];
+      const GROUP_END = Date.UTC(2026, 5, 28);
+      const ko = fixtures
+        .filter(f => f.fixture?.date && new Date(f.fixture.date).getTime() >= GROUP_END)
+        .sort((a, b) => new Date(a.fixture.date).getTime() - new Date(b.fixture.date).getTime());
+      let r32 = ko.filter(f => {
+        const r = (f.league?.round ?? '').toLowerCase();
+        return r.includes('32') || r.includes('1/16');
+      });
+      if (!r32.length) r32 = ko.slice(0, Math.min(16, ko.length));
+      const schedule: Record<number, { date: string; time: string }> = {};
+      r32.forEach((f, i) => {
+        const d = new Date(f.fixture.date);
+        const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+        const timeStr = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+        schedule[i] = { date: dateStr, time: timeStr };
+      });
+      setMatchSchedule(schedule);
+      Alert.alert('✓', `${Object.keys(schedule).length} ${locale === 'es' ? 'horarios cargados' : 'schedules loaded'}`);
+    } catch {
+      Alert.alert('Error', locale === 'es' ? 'No se pudo conectar con la API' : 'Could not connect to API');
+    } finally {
+      setFetchingSchedule(false);
+    }
+  }
+
   async function generateR32() {
     const missing = OCTAVOS.filter(([a, b]) => !resolveSlot(a) || !resolveSlot(b));
     if (missing.length > 0) {
@@ -110,15 +149,19 @@ export default function AdminScreen() {
     setGenerating(true);
     const [y, m, d] = bracketDate.split('-').map(Number);
     const [h, min] = bracketTime.split(':').map(Number);
-    let kickoff = Date.UTC(y, m - 1, d, h, min);
-    for (const [slotA, slotB] of OCTAVOS) {
-      await addKnockoutMatch(id!, {
-        home: resolveSlot(slotA),
-        away: resolveSlot(slotB),
-        phase: 'r32',
-        kickoff,
-      });
-      kickoff += 3 * 3600 * 1000; // 3h between matches
+    const defaultKickoff = Date.UTC(y, m - 1, d, h, min);
+    for (let i = 0; i < OCTAVOS.length; i++) {
+      const [slotA, slotB] = OCTAVOS[i];
+      const sched = matchSchedule[i];
+      let kickoff: number;
+      if (sched?.date && sched?.time) {
+        const [sy, sm, sd] = sched.date.split('-').map(Number);
+        const [sh, smin] = sched.time.split(':').map(Number);
+        kickoff = Date.UTC(sy, sm - 1, sd, sh, smin);
+      } else {
+        kickoff = defaultKickoff + i * 3 * 3600 * 1000;
+      }
+      await addKnockoutMatch(id!, { home: resolveSlot(slotA), away: resolveSlot(slotB), phase: 'r32', kickoff });
     }
     setGenerating(false);
     Alert.alert('✓', locale === 'es' ? '16 partidos de octavos creados' : '16 round of 32 matches created');
@@ -197,8 +240,19 @@ export default function AdminScreen() {
         {/* ── BRACKET OCTAVOS ── */}
         {section === 'bracket' && (
           <>
+            {/* API fetch button */}
+            <TouchableOpacity
+              style={[s.syncBtn, { marginBottom: Spacing.md }, fetchingSchedule && { opacity: 0.6 }]}
+              onPress={fetchingSchedule ? undefined : fetchKnockoutSchedule}
+              disabled={fetchingSchedule}
+            >
+              {fetchingSchedule
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={s.syncTxt}>🗓️ {locale === 'es' ? 'Obtener horarios de la API' : 'Fetch schedule from API'}</Text>}
+            </TouchableOpacity>
+
             <Text style={s.sectionLabel}>
-              {locale === 'es' ? 'Fecha y hora de los primeros octavos' : 'Date and time for first R32 match'}
+              {locale === 'es' ? 'Fecha/hora por defecto (si no hay horario de la API)' : 'Default date/time (if no API schedule)'}
             </Text>
             <View style={s.inputRow}>
               <TextInput
@@ -214,17 +268,18 @@ export default function AdminScreen() {
             </View>
             <Text style={s.hint}>
               {locale === 'es'
-                ? 'Los partidos se crean con 3h de diferencia entre sí'
-                : 'Matches are created 3h apart from each other'}
+                ? 'Fallback con 3h de diferencia entre partidos'
+                : 'Fallback with 3h between matches'}
             </Text>
 
             <Text style={[s.sectionLabel, { marginTop: Spacing.lg }]}>
-              {locale === 'es' ? 'Cruces (basados en clasificación de grupos)' : 'Matchups (based on group standings)'}
+              {locale === 'es' ? 'Cruces y horarios' : 'Matchups and schedule'}
             </Text>
 
             {OCTAVOS.map(([slotA, slotB], i) => {
               const teamA = resolveSlot(slotA);
               const teamB = resolveSlot(slotB);
+              const sched = matchSchedule[i];
               return (
                 <View key={i} style={s.card}>
                   <Text style={s.slotLabel}>{slotA} vs {slotB}</Text>
@@ -255,6 +310,29 @@ export default function AdminScreen() {
                       }
                     </View>
                   </View>
+                  {/* Per-match date/time */}
+                  <View style={[s.inputRow, { marginTop: 8 }]}>
+                    <Text style={{ fontSize: 12, color: Colors.muted }}>📅</Text>
+                    <TextInput
+                      style={[s.bracketInput, { flex: 1 }]}
+                      placeholder="2026-06-29"
+                      placeholderTextColor={Colors.muted}
+                      value={sched?.date ?? ''}
+                      onChangeText={v => setMatchSchedule(p => ({ ...p, [i]: { ...(p[i] ?? { date: '', time: '' }), date: v } }))}
+                    />
+                    <TextInput
+                      style={[s.bracketInput, { width: 72 }]}
+                      placeholder="20:00"
+                      placeholderTextColor={Colors.muted}
+                      value={sched?.time ?? ''}
+                      onChangeText={v => setMatchSchedule(p => ({ ...p, [i]: { ...(p[i] ?? { date: '', time: '' }), time: v } }))}
+                    />
+                  </View>
+                  {sched?.date && (
+                    <Text style={{ fontSize: 11, color: Colors.gold, marginTop: 4 }}>
+                      ✓ {sched.date} {sched.time}
+                    </Text>
+                  )}
                 </View>
               );
             })}
