@@ -29,6 +29,9 @@ export default function AdminScreen() {
   const [bracketTime, setBracketTime] = useState('20:00');
   const [generating, setGenerating] = useState(false);
   const [matchSchedule, setMatchSchedule] = useState<Record<number, { date: string; time: string }>>({});
+  const [qfSchedule, setQfSchedule] = useState<Record<number, { date: string; time: string; home: string; away: string }>>({});
+  const [sfSchedule, setSfSchedule] = useState<Record<number, { date: string; time: string; home: string; away: string }>>({});
+  const [fnSchedule, setFnSchedule] = useState<Record<number, { date: string; time: string; home: string; away: string }>>({});
   const [fetchingSchedule, setFetchingSchedule] = useState(false);
 
   useEffect(() => {
@@ -109,25 +112,47 @@ export default function AdminScreen() {
         Alert.alert('', locale === 'es' ? 'Límite diario de la API alcanzado' : 'API daily limit reached');
         return;
       }
+      const NAME_MAP: Record<string, string> = {"Spain":"España","France":"Francia","Germany":"Alemania","Brazil":"Brasil","Argentina":"Argentina","Portugal":"Portugal","England":"Inglaterra","Netherlands":"Países Bajos","Belgium":"Bélgica","Croatia":"Croacia","Italy":"Italia","Mexico":"México","United States":"EE.UU.","USA":"EE.UU.","Canada":"Canadá","Uruguay":"Uruguay","Colombia":"Colombia","Japan":"Japón","South Korea":"Corea del Sur","Korea Republic":"Corea del Sur","Morocco":"Marruecos","Senegal":"Senegal","South Africa":"Sudáfrica","Czech Republic":"Rep. Checa","Czechia":"Rep. Checa","Switzerland":"Suiza","Australia":"Australia","Paraguay":"Paraguay","Ivory Coast":"C. Marfil","Ecuador":"Ecuador","Sweden":"Suecia","Tunisia":"Túnez","Egypt":"Egipto","Iran":"Irán","New Zealand":"N. Zelanda","Saudi Arabia":"Arabia S.","Iraq":"Irak","Norway":"Noruega","Austria":"Austria","Algeria":"Argelia","DR Congo":"RD Congo","Uzbekistan":"Uzbekistán","Ghana":"Ghana","Panama":"Panamá","Haiti":"Haití","Scotland":"Escocia","Turkey":"Turquía","Jordan":"Jordania","Curacao":"Curazao","Cape Verde":"C. Verde","Qatar":"Qatar","Bosnia and Herzegovina":"Bosnia"};
+      const mapN = (n: string) => NAME_MAP[n] || n;
       const fixtures: any[] = data.response ?? [];
       const GROUP_END = Date.UTC(2026, 5, 28);
       const ko = fixtures
         .filter(f => f.fixture?.date && new Date(f.fixture.date).getTime() >= GROUP_END)
         .sort((a, b) => new Date(a.fixture.date).getTime() - new Date(b.fixture.date).getTime());
-      let r32 = ko.filter(f => {
+
+      const byPhase: Record<string, any[]> = { r32: [], qf: [], sf: [], fn: [] };
+      ko.forEach(f => {
         const r = (f.league?.round ?? '').toLowerCase();
-        return r.includes('32') || r.includes('1/16');
+        if (r.includes('32') || r.includes('1/16')) byPhase.r32.push(f);
+        else if (r.includes('quarter') || r.includes('1/4')) byPhase.qf.push(f);
+        else if (r.includes('semi') || r.includes('1/2')) byPhase.sf.push(f);
+        else if (r.includes('final') || r.includes('3rd') || r.includes('bron')) byPhase.fn.push(f);
       });
-      if (!r32.length) r32 = ko.slice(0, Math.min(16, ko.length));
-      const schedule: Record<number, { date: string; time: string }> = {};
-      r32.forEach((f, i) => {
-        const d = new Date(f.fixture.date);
-        const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-        const timeStr = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-        schedule[i] = { date: dateStr, time: timeStr };
-      });
-      setMatchSchedule(schedule);
-      Alert.alert('✓', `${Object.keys(schedule).length} ${locale === 'es' ? 'horarios cargados' : 'schedules loaded'}`);
+      if (!byPhase.r32.length && !byPhase.qf.length) {
+        byPhase.r32 = ko.slice(0, 16); byPhase.qf = ko.slice(16, 24);
+        byPhase.sf = ko.slice(24, 28); byPhase.fn = ko.slice(28);
+      }
+
+      const toSched = (arr: any[]) => {
+        const result: Record<number, any> = {};
+        arr.forEach((f, i) => {
+          const d = new Date(f.fixture.date);
+          result[i] = {
+            date: `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`,
+            time: `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`,
+            home: mapN(f.teams?.home?.name ?? ''),
+            away: mapN(f.teams?.away?.name ?? ''),
+          };
+        });
+        return result;
+      };
+
+      setMatchSchedule(toSched(byPhase.r32));
+      setQfSchedule(toSched(byPhase.qf));
+      setSfSchedule(toSched(byPhase.sf));
+      setFnSchedule(toSched(byPhase.fn));
+      const total = byPhase.r32.length + byPhase.qf.length + byPhase.sf.length + byPhase.fn.length;
+      Alert.alert('✓', `${total} ${locale === 'es' ? 'horarios cargados' : 'schedules loaded'}`);
     } catch {
       Alert.alert('Error', locale === 'es' ? 'No se pudo conectar con la API' : 'Could not connect to API');
     } finally {
@@ -349,6 +374,81 @@ export default function AdminScreen() {
                   </Text>
               }
             </TouchableOpacity>
+
+            {/* ── Cuartos, Semis, Final ── */}
+            {([
+              { label: locale === 'es' ? 'Cuartos de final' : 'Quarterfinals', phase: 'qf', sched: qfSchedule, setSched: setQfSchedule, n: 8 },
+              { label: locale === 'es' ? 'Semifinales' : 'Semifinals', phase: 'sf', sched: sfSchedule, setSched: setSfSchedule, n: 4 },
+              { label: locale === 'es' ? 'Final y 3er puesto' : 'Final & 3rd place', phase: 'final', sched: fnSchedule, setSched: setFnSchedule, n: 2 },
+            ] as const).map(({ label, phase, sched, setSched, n }) => (
+              <View key={phase} style={{ marginTop: Spacing.lg }}>
+                <Text style={[s.sectionLabel, { marginBottom: Spacing.sm }]}>{label}</Text>
+                {Array.from({ length: Math.max(n, Object.keys(sched).length) }).map((_, i) => {
+                  const t = (sched as any)[i] ?? {};
+                  return (
+                    <View key={i} style={[s.card, { marginBottom: Spacing.sm }]}>
+                      <View style={s.inputRow}>
+                        <TextInput
+                          style={[s.bracketInput, { flex: 1 }]}
+                          placeholder={locale === 'es' ? 'Local' : 'Home'}
+                          placeholderTextColor={Colors.muted}
+                          value={t.home ?? ''}
+                          onChangeText={v => setSched((p: any) => ({ ...p, [i]: { ...(p[i] ?? {}), home: v } }))}
+                        />
+                        <Text style={s.vs}>vs</Text>
+                        <TextInput
+                          style={[s.bracketInput, { flex: 1 }]}
+                          placeholder={locale === 'es' ? 'Visitante' : 'Away'}
+                          placeholderTextColor={Colors.muted}
+                          value={t.away ?? ''}
+                          onChangeText={v => setSched((p: any) => ({ ...p, [i]: { ...(p[i] ?? {}), away: v } }))}
+                        />
+                      </View>
+                      <View style={[s.inputRow, { marginTop: 8 }]}>
+                        <Text style={{ fontSize: 12, color: Colors.muted }}>📅</Text>
+                        <TextInput
+                          style={[s.bracketInput, { flex: 1 }]}
+                          placeholder="2026-07-04"
+                          placeholderTextColor={Colors.muted}
+                          value={t.date ?? ''}
+                          onChangeText={v => setSched((p: any) => ({ ...p, [i]: { ...(p[i] ?? {}), date: v } }))}
+                        />
+                        <TextInput
+                          style={[s.bracketInput, { width: 72 }]}
+                          placeholder="21:00"
+                          placeholderTextColor={Colors.muted}
+                          value={t.time ?? ''}
+                          onChangeText={v => setSched((p: any) => ({ ...p, [i]: { ...(p[i] ?? {}), time: v } }))}
+                        />
+                      </View>
+                      {t.date && <Text style={{ fontSize: 11, color: Colors.gold, marginTop: 4 }}>✓ {t.date} {t.time}</Text>}
+                    </View>
+                  );
+                })}
+                <TouchableOpacity
+                  style={s.generateBtn}
+                  onPress={async () => {
+                    const toCreate = Object.entries(sched as any)
+                      .filter(([, t]: any) => t.home && t.away)
+                      .filter(([, t]: any) => !matchList.find(m => m.phase === phase && m.home === (t as any).home && m.away === (t as any).away));
+                    if (!toCreate.length) { Alert.alert('', locale === 'es' ? 'Sin partidos nuevos' : 'No new matches'); return; }
+                    for (const [, t] of toCreate) {
+                      const tt = t as any;
+                      let kickoff = 0;
+                      if (tt.date && tt.time) {
+                        const [y, m, d] = tt.date.split('-').map(Number);
+                        const [h, min] = tt.time.split(':').map(Number);
+                        kickoff = Date.UTC(y, m - 1, d, h, min);
+                      }
+                      await addKnockoutMatch(id!, { home: tt.home, away: tt.away, phase, kickoff });
+                    }
+                    Alert.alert('✓', `${toCreate.length} ${locale === 'es' ? 'partido(s) creado(s)' : 'match(es) created'}`);
+                  }}
+                >
+                  <Text style={s.generateBtnTxt}>🗓️ {locale === 'es' ? `Crear partidos de ${label}` : `Create ${label} matches`}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </>
         )}
 
