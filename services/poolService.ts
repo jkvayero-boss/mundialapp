@@ -96,7 +96,7 @@ export async function addKnockoutMatch(poolId: string, match: {
 
 export async function syncResultsFromAPI(poolId: string, matches: Match[]): Promise<number> {
   try {
-    const res = await fetch('https://v3.football.api-sports.io/fixtures?league=1&season=2026&status=FT', {
+    const res = await fetch('https://v3.football.api-sports.io/fixtures?league=1&season=2026', {
       headers: { 'x-apisports-key': '95ea5f8bce0ce8bdeba48f077d4751e9' },
     });
     const data = await res.json();
@@ -105,7 +105,7 @@ export async function syncResultsFromAPI(poolId: string, matches: Match[]): Prom
     const NAME_MAP: Record<string, string> = {
       "Spain":"España","France":"Francia","Germany":"Alemania","Brazil":"Brasil","Argentina":"Argentina",
       "Portugal":"Portugal","England":"Inglaterra","Netherlands":"Países Bajos","Belgium":"Bélgica",
-      "Croatia":"Croacia","Italy":"Italia","Mexico":"México","United States":"EE.UU.","USA":"EE.UU.",
+      "Croatia":"Croacia","Mexico":"México","United States":"EE.UU.","USA":"EE.UU.",
       "Canada":"Canadá","Uruguay":"Uruguay","Colombia":"Colombia","Japan":"Japón",
       "South Korea":"Corea del Sur","Korea Republic":"Corea del Sur","Morocco":"Marruecos",
       "Senegal":"Senegal","South Africa":"Sudáfrica","Czech Republic":"Rep. Checa",
@@ -118,22 +118,44 @@ export async function syncResultsFromAPI(poolId: string, matches: Match[]): Prom
       "Curacao":"Curazao","Cape Verde":"C. Verde","Qatar":"Qatar","Bosnia and Herzegovina":"Bosnia",
     };
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const mapN = (n: string) => NAME_MAP[n] || n;
+    const GROUP_END = Date.UTC(2026, 5, 28);
     let updated = 0;
     for (const fix of fixtures) {
       const hR = fix.teams?.home?.name;
       const aR = fix.teams?.away?.name;
       const gh = fix.goals?.home;
       const ga = fix.goals?.away;
-      if (!hR || !aR || gh == null || ga == null) continue;
-      const hE = NAME_MAP[hR] || hR;
-      const aE = NAME_MAP[aR] || aR;
-      const m = matches.find(m =>
-        (norm(m.home) === norm(hR) || norm(m.home) === norm(hE)) &&
-        (norm(m.away) === norm(aR) || norm(m.away) === norm(aE))
-      );
-      if (m && m.result.home === '') {
-        await updateMatchResult(poolId, m.id, String(gh), String(ga));
-        updated++;
+      const status: string = fix.fixture?.status?.short ?? '';
+      const kickoffMs: number = fix.fixture?.date ? new Date(fix.fixture.date).getTime() : 0;
+      if (!hR || !aR) continue;
+      const hE = mapN(hR);
+      const aE = mapN(aR);
+      // Actualitzar resultats de partits acabats
+      if (status === 'FT' && gh != null && ga != null) {
+        const m = matches.find(m =>
+          (norm(m.home) === norm(hR) || norm(m.home) === norm(hE)) &&
+          (norm(m.away) === norm(aR) || norm(m.away) === norm(aE))
+        );
+        if (m && m.result.home === '') {
+          await updateMatchResult(poolId, m.id, String(gh), String(ga));
+          updated++;
+        }
+      }
+      // Auto-crear partits eliminatoris amb equips coneguts
+      const r = (fix.league?.round ?? '').toLowerCase();
+      const isKO = kickoffMs >= GROUP_END && !r.includes('group');
+      const teamsKnown = hR !== 'TBD' && aR !== 'TBD' && hE && aE;
+      if (isKO && teamsKnown) {
+        const exists = matches.find(m => norm(m.home) === norm(hE) && norm(m.away) === norm(aE));
+        if (!exists) {
+          let phase = 'r32';
+          if (r.includes('quarter') || r.includes('1/4')) phase = 'qf';
+          else if (r.includes('semi') || r.includes('1/2')) phase = 'sf';
+          else if (r.includes('final') || r.includes('3rd') || r.includes('bron')) phase = 'final';
+          await addKnockoutMatch(poolId, { home: hE, away: aE, phase, kickoff: kickoffMs });
+          updated++;
+        }
       }
     }
     return updated;
