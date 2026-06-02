@@ -205,9 +205,9 @@ export default function PoolScreen() {
                 const isToday = k === today;
                 const isTomorrow = k === tomorrow;
                 const label = isToday
-                  ? (locale === 'es' ? 'HOY' : 'TODAY')
+                  ? t('today', locale).toUpperCase()
                   : isTomorrow
-                    ? (locale === 'es' ? 'MAÑANA' : 'TOMORROW')
+                    ? t('tomorrow', locale).toUpperCase()
                     : formatDateGroup(m.kickoff, locale);
                 groups.push({ key: k, label, items: [] });
               }
@@ -234,7 +234,7 @@ export default function PoolScreen() {
                     <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
                       {pending > 0 && (
                         <View style={s.pendingBadge}>
-                          <Text style={s.pendingBadgeTxt}>{pending} {locale === 'es' ? 'sin rellenar' : 'pending'}</Text>
+                          <Text style={s.pendingBadgeTxt}>{pending} {t('pendingText', locale)}</Text>
                         </View>
                       )}
                       <Text style={s.dayCount}>{group.items.length}</Text>
@@ -278,7 +278,7 @@ export default function PoolScreen() {
                             <Text style={s.teamName} numberOfLines={1}>{m.away}</Text>
                           </View>
                         </View>
-                        {hasRes && <Text style={s.resultTxt}>{locale === 'es' ? 'Resultado' : 'Result'}: {m.result.home} – {m.result.away}</Text>}
+                        {hasRes && <Text style={s.resultTxt}>{t('result', locale)}: {m.result.home} – {m.result.away}</Text>}
                         {locked && (
                           <View style={s.reactionsRow}>
                             {REACTIONS.map(emoji => {
@@ -384,12 +384,8 @@ export default function PoolScreen() {
           {matchList.filter(m => m.phase !== 'groups').length === 0 && (
             <View style={s.emptyState}>
               <Text style={s.emptyIcon}>🗓️</Text>
-              <Text style={s.emptyTitle}>{locale === 'es' ? 'Eliminatorias' : 'Knockout stage'}</Text>
-              <Text style={s.emptyText}>
-                {locale === 'es'
-                  ? 'Los partidos de eliminatorias aparecerán aquí una vez finalice la fase de grupos (29 jun)'
-                  : 'Knockout matches will appear here after the group stage ends (Jun 29)'}
-              </Text>
+              <Text style={s.emptyTitle}>{t('knockoutStage', locale)}</Text>
+              <Text style={s.emptyText}>{t('bracketEmptyText', locale)}</Text>
             </View>
           )}
           {['r32', 'qf', 'sf', 'final'].map(phase => {
@@ -487,13 +483,13 @@ export default function PoolScreen() {
 
           {/* ADD KNOCKOUT MATCH */}
           <Text style={[s.sectionLabel, { marginTop: Spacing.lg }]}>
-            {locale === 'es' ? 'Añadir partido de eliminatorias' : 'Add knockout match'}
+            {t('addKnockoutMatch', locale)}
           </Text>
           <View style={s.adminCard}>
             <View style={s.adminInputRow}>
               <TextInput
                 style={[s.adminInput, { flex: 1, width: undefined }]}
-                placeholder={locale === 'es' ? 'Equipo local' : 'Home team'}
+                placeholder={t('homeTeam', locale)}
                 placeholderTextColor={Colors.muted}
                 value={newMatch.home}
                 onChangeText={v => setNewMatch(p => ({ ...p, home: v }))}
@@ -501,7 +497,7 @@ export default function PoolScreen() {
               <Text style={{ color: Colors.muted, fontWeight: '800' }}>vs</Text>
               <TextInput
                 style={[s.adminInput, { flex: 1, width: undefined }]}
-                placeholder={locale === 'es' ? 'Equipo visitante' : 'Away team'}
+                placeholder={t('awayTeam', locale)}
                 placeholderTextColor={Colors.muted}
                 value={newMatch.away}
                 onChangeText={v => setNewMatch(p => ({ ...p, away: v }))}
@@ -556,14 +552,14 @@ export default function PoolScreen() {
               }}
             >
               <Text style={s.adminSaveTxt}>
-                {addingMatch ? '...' : (locale === 'es' ? '+ Añadir partido' : '+ Add match')}
+                {addingMatch ? '...' : t('addMatch', locale)}
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* PLAYER MANAGEMENT */}
           <Text style={[s.sectionLabel, { marginTop: Spacing.lg }]}>
-            {locale === 'es' ? 'Gestión de jugadores' : 'Player management'}
+            {t('playerMgmt', locale)}
           </Text>
           {Object.values(players).map((p: any) => (
             <View key={p.uid} style={[s.adminCard, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
@@ -573,11 +569,11 @@ export default function PoolScreen() {
                 ? <Text style={{ fontSize: 11, color: Colors.gold }}>Admin</Text>
                 : <TouchableOpacity
                     onPress={() => Alert.alert(
-                      locale === 'es' ? 'Eliminar jugador' : 'Remove player',
+                      t('removePlayer', locale),
                       `${p.name}?`,
                       [
-                        { text: locale === 'es' ? 'Cancelar' : 'Cancel', style: 'cancel' },
-                        { text: locale === 'es' ? 'Eliminar' : 'Remove', style: 'destructive', onPress: () => removePlayer(id!, p.uid) },
+                        { text: t('cancel', locale), style: 'cancel' },
+                        { text: t('remove', locale), style: 'destructive', onPress: () => removePlayer(id!, p.uid) },
                       ]
                     )}
                     style={s.removeBtn}

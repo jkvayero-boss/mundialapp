@@ -109,7 +109,7 @@ export default function AdminScreen() {
       });
       const data = await res.json();
       if (data.errors?.requests || data.errors?.rateLimit) {
-        Alert.alert('', locale === 'es' ? 'Límite diario de la API alcanzado' : 'API daily limit reached');
+        Alert.alert('', t('apiLimitReached', locale));
         return;
       }
       const NAME_MAP: Record<string, string> = {"Spain":"España","France":"Francia","Germany":"Alemania","Brazil":"Brasil","Argentina":"Argentina","Portugal":"Portugal","England":"Inglaterra","Netherlands":"Países Bajos","Belgium":"Bélgica","Croatia":"Croacia","Italy":"Italia","Mexico":"México","United States":"EE.UU.","USA":"EE.UU.","Canada":"Canadá","Uruguay":"Uruguay","Colombia":"Colombia","Japan":"Japón","South Korea":"Corea del Sur","Korea Republic":"Corea del Sur","Morocco":"Marruecos","Senegal":"Senegal","South Africa":"Sudáfrica","Czech Republic":"Rep. Checa","Czechia":"Rep. Checa","Switzerland":"Suiza","Australia":"Australia","Paraguay":"Paraguay","Ivory Coast":"C. Marfil","Ecuador":"Ecuador","Sweden":"Suecia","Tunisia":"Túnez","Egypt":"Egipto","Iran":"Irán","New Zealand":"N. Zelanda","Saudi Arabia":"Arabia S.","Iraq":"Irak","Norway":"Noruega","Austria":"Austria","Algeria":"Argelia","DR Congo":"RD Congo","Uzbekistan":"Uzbekistán","Ghana":"Ghana","Panama":"Panamá","Haiti":"Haití","Scotland":"Escocia","Turkey":"Turquía","Jordan":"Jordania","Curacao":"Curazao","Cape Verde":"C. Verde","Qatar":"Qatar","Bosnia and Herzegovina":"Bosnia"};
@@ -152,9 +152,9 @@ export default function AdminScreen() {
       setSfSchedule(toSched(byPhase.sf));
       setFnSchedule(toSched(byPhase.fn));
       const total = byPhase.r32.length + byPhase.qf.length + byPhase.sf.length + byPhase.fn.length;
-      Alert.alert('✓', `${total} ${locale === 'es' ? 'horarios cargados' : 'schedules loaded'}`);
+      Alert.alert('✓', `${total} ${t('schedulesLoaded', locale)}`);
     } catch {
-      Alert.alert('Error', locale === 'es' ? 'No se pudo conectar con la API' : 'Could not connect to API');
+      Alert.alert('Error', t('errorNoAPI', locale));
     } finally {
       setFetchingSchedule(false);
     }
@@ -163,12 +163,7 @@ export default function AdminScreen() {
   async function generateR32() {
     const missing = OCTAVOS.filter(([a, b]) => !resolveSlot(a) || !resolveSlot(b));
     if (missing.length > 0) {
-      Alert.alert(
-        locale === 'es' ? 'Faltan equipos' : 'Missing teams',
-        locale === 'es'
-          ? `Faltan ${missing.length} cruces sin equipo. Revisa los resultados de grupos o asigna los equipos manualmente.`
-          : `${missing.length} matches are missing teams. Check group results or assign manually.`
-      );
+      Alert.alert(t('missingTeams', locale), t('missingTeamsMsg', locale).replace('{n}', String(missing.length)));
       return;
     }
     setGenerating(true);
@@ -189,15 +184,15 @@ export default function AdminScreen() {
       await addKnockoutMatch(id!, { home: resolveSlot(slotA), away: resolveSlot(slotB), phase: 'r32', kickoff });
     }
     setGenerating(false);
-    Alert.alert('✓', locale === 'es' ? '16 partidos de octavos creados' : '16 round of 32 matches created');
+    Alert.alert('✓', t('r32Created', locale));
     router.back();
   }
 
   const SECTIONS = [
-    { key: 'results', label: locale === 'es' ? '📋 Resultados' : '📋 Results' },
-    { key: 'bracket', label: locale === 'es' ? '🗓️ Octavos' : '🗓️ R32' },
-    { key: 'add', label: locale === 'es' ? '➕ Partido' : '➕ Match' },
-    { key: 'players', label: locale === 'es' ? '👥 Jugadores' : '👥 Players' },
+    { key: 'results', label: t('tabResults', locale) },
+    { key: 'bracket', label: t('tabBracket', locale) },
+    { key: 'add', label: t('tabAddMatch', locale) },
+    { key: 'players', label: t('tabPlayers', locale) },
   ] as const;
 
   return (
@@ -256,7 +251,7 @@ export default function AdminScreen() {
             ))}
             {matchList.filter(m => m.result.home === '').length === 0 && (
               <Text style={[s.muted, { textAlign: 'center', marginTop: 40 }]}>
-                {locale === 'es' ? 'Todos los partidos tienen resultado ✓' : 'All matches have results ✓'}
+                {t('allResultsDone', locale)}
               </Text>
             )}
           </>
@@ -273,11 +268,11 @@ export default function AdminScreen() {
             >
               {fetchingSchedule
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={s.syncTxt}>🗓️ {locale === 'es' ? 'Obtener horarios de la API' : 'Fetch schedule from API'}</Text>}
+                : <Text style={s.syncTxt}>🗓️ {t('syncResults', locale)}</Text>}
             </TouchableOpacity>
 
             <Text style={s.sectionLabel}>
-              {locale === 'es' ? 'Fecha/hora por defecto (si no hay horario de la API)' : 'Default date/time (if no API schedule)'}
+              {t('defaultDateTimeLabel', locale)}
             </Text>
             <View style={s.inputRow}>
               <TextInput
@@ -298,7 +293,7 @@ export default function AdminScreen() {
             </Text>
 
             <Text style={[s.sectionLabel, { marginTop: Spacing.lg }]}>
-              {locale === 'es' ? 'Cruces y horarios' : 'Matchups and schedule'}
+              {t('matchupsSchedule', locale)}
             </Text>
 
             {OCTAVOS.map(([slotA, slotB], i) => {
@@ -370,16 +365,16 @@ export default function AdminScreen() {
               {generating
                 ? <ActivityIndicator color={Colors.bg} />
                 : <Text style={s.generateBtnTxt}>
-                    {locale === 'es' ? '🗓️ Crear 16 partidos de octavos' : '🗓️ Create 16 R32 matches'}
+                    {t('createR32Btn', locale)}
                   </Text>
               }
             </TouchableOpacity>
 
             {/* ── Cuartos, Semis, Final ── */}
             {([
-              { label: locale === 'es' ? 'Cuartos de final' : 'Quarterfinals', phase: 'qf', sched: qfSchedule, setSched: setQfSchedule, n: 8 },
-              { label: locale === 'es' ? 'Semifinales' : 'Semifinals', phase: 'sf', sched: sfSchedule, setSched: setSfSchedule, n: 4 },
-              { label: locale === 'es' ? 'Final y 3er puesto' : 'Final & 3rd place', phase: 'final', sched: fnSchedule, setSched: setFnSchedule, n: 2 },
+              { label: t('qf', locale), phase: 'qf', sched: qfSchedule, setSched: setQfSchedule, n: 8 },
+              { label: t('sf', locale), phase: 'sf', sched: sfSchedule, setSched: setSfSchedule, n: 4 },
+              { label: `${t('final', locale)} & ${t('bronze', locale)}`, phase: 'final', sched: fnSchedule, setSched: setFnSchedule, n: 2 },
             ] as const).map(({ label, phase, sched, setSched, n }) => (
               <View key={phase} style={{ marginTop: Spacing.lg }}>
                 <Text style={[s.sectionLabel, { marginBottom: Spacing.sm }]}>{label}</Text>
@@ -390,7 +385,7 @@ export default function AdminScreen() {
                       <View style={s.inputRow}>
                         <TextInput
                           style={[s.bracketInput, { flex: 1 }]}
-                          placeholder={locale === 'es' ? 'Local' : 'Home'}
+                          placeholder={t('homeTeam', locale)}
                           placeholderTextColor={Colors.muted}
                           value={t.home ?? ''}
                           onChangeText={v => setSched((p: any) => ({ ...p, [i]: { ...(p[i] ?? {}), home: v } }))}
@@ -398,7 +393,7 @@ export default function AdminScreen() {
                         <Text style={s.vs}>vs</Text>
                         <TextInput
                           style={[s.bracketInput, { flex: 1 }]}
-                          placeholder={locale === 'es' ? 'Visitante' : 'Away'}
+                          placeholder={t('awayTeam', locale)}
                           placeholderTextColor={Colors.muted}
                           value={t.away ?? ''}
                           onChangeText={v => setSched((p: any) => ({ ...p, [i]: { ...(p[i] ?? {}), away: v } }))}
@@ -431,7 +426,7 @@ export default function AdminScreen() {
                     const toCreate = Object.entries(sched as any)
                       .filter(([, t]: any) => t.home && t.away)
                       .filter(([, t]: any) => !matchList.find(m => m.phase === phase && m.home === (t as any).home && m.away === (t as any).away));
-                    if (!toCreate.length) { Alert.alert('', locale === 'es' ? 'Sin partidos nuevos' : 'No new matches'); return; }
+                    if (!toCreate.length) { Alert.alert('', t('noNewMatches', locale)); return; }
                     for (const [, t] of toCreate) {
                       const tt = t as any;
                       let kickoff = 0;
@@ -442,7 +437,7 @@ export default function AdminScreen() {
                       }
                       await addKnockoutMatch(id!, { home: tt.home, away: tt.away, phase, kickoff });
                     }
-                    Alert.alert('✓', `${toCreate.length} ${locale === 'es' ? 'partido(s) creado(s)' : 'match(es) created'}`);
+                    Alert.alert('✓', `${toCreate.length} ${t('matchesCreated', locale)}`);
                   }}
                 >
                   <Text style={s.generateBtnTxt}>🗓️ {locale === 'es' ? `Crear partidos de ${label}` : `Create ${label} matches`}</Text>
