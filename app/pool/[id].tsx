@@ -32,6 +32,7 @@ export default function PoolScreen() {
   const [now, setNow] = useState(Date.now());
   const [showChampion, setShowChampion] = useState(false);
   const [openPreds, setOpenPreds] = useState<Record<string, boolean>>({});
+  const [openStats, setOpenStats] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [adminResult, setAdminResult] = useState<Record<string, { home: string; away: string }>>({});
   const [newMatch, setNewMatch] = useState({ home: '', away: '', phase: 'r32', date: '', time: '' });
@@ -63,17 +64,29 @@ export default function PoolScreen() {
   const groupMatches = matchList.filter(m => m.phase === 'groups');
 
   const standings = Object.values(players).map((p: any) => {
-    const total = matchList.reduce((sum, m) => {
-      if (m.result.home === '') return sum;
-      return sum + calcPoints(predictions[p.uid]?.[m.id], m.result, m.phase);
-    }, 0);
-    const exact = matchList.reduce((sum, m) => {
-      if (m.result.home === '') return sum;
+    const finished = matchList
+      .filter(m => m.result.home !== '')
+      .sort((a, b) => (a.kickoff ?? 0) - (b.kickoff ?? 0));
+    let total = 0, exact = 0, hits = 0, curStreak = 0, streak = 0;
+    const byPhase: Record<string, { pts: number; exact: number; played: number }> = {};
+    finished.forEach(m => {
       const pts = calcPoints(predictions[p.uid]?.[m.id], m.result, m.phase);
-      return sum + (pts === PHASE_PTS[m.phase].exact ? 1 : 0);
-    }, 0);
-    return { ...p, total, exact };
-  }).sort((a: any, b: any) => b.total - a.total || b.exact - a.exact);
+      total += pts;
+      if (pts === PHASE_PTS[m.phase].exact) { exact++; curStreak++; streak = Math.max(streak, curStreak); }
+      else curStreak = 0;
+      if (pts > 0) hits++;
+      if (!byPhase[m.phase]) byPhase[m.phase] = { pts: 0, exact: 0, played: 0 };
+      byPhase[m.phase].pts += pts;
+      if (pts === PHASE_PTS[m.phase].exact) byPhase[m.phase].exact++;
+      byPhase[m.phase].played++;
+    });
+    const played = finished.filter(m => {
+      const pr = predictions[p.uid]?.[m.id];
+      return pr?.home != null && pr.home !== '' && pr.away != null && pr.away !== '';
+    }).length;
+    const pct = played > 0 ? Math.round(hits / played * 100) : 0;
+    return { ...p, total, exact, hits, streak, played, pct, byPhase };
+  }).sort((a: any, b: any) => b.total - a.total || b.exact - a.exact || a.name.localeCompare(b.name));
 
   function handlePred(matchId: string, side: 'home' | 'away', val: string) {
     if (!uid || !id) return;
@@ -219,7 +232,11 @@ export default function PoolScreen() {
               const isTomorrow = group.key === tomorrow;
               const defaultOpen = isToday || isTomorrow || (!groups.some(g => g.key === today || g.key === tomorrow) && groups.indexOf(group) === 0);
               const isOpen = openPreds[`day_${group.key}`] !== undefined ? openPreds[`day_${group.key}`] : defaultOpen;
-              const pending = group.items.filter(m => !isLocked(m, now) && m.result.home === '' && (!predictions[uid]?.[m.id] || predictions[uid]?.[m.id]?.home === '')).length;
+              const pending = group.items.filter(m => {
+                if (isLocked(m, now) || m.result.home !== '') return false;
+                const pr = predictions[uid]?.[m.id];
+                return !(pr?.home != null && pr.home !== '' && pr?.away != null && pr.away !== '');
+              }).length;
 
               return (
                 <View key={group.key} style={{ marginBottom: Spacing.sm }}>
@@ -307,7 +324,7 @@ export default function PoolScreen() {
                               return (
                                 <View key={p.uid} style={[s.predRow, ppts > 0 && (pExact ? s.predRowExact : s.predRowHit)]}>
                                   <Text style={s.predAvatar}>{p.avatar}</Text>
-                                  <Text style={s.predName}>{p.name}{p.uid === uid ? ' (tú)' : ''}</Text>
+                                  <Text style={s.predName}>{p.name}{p.uid === uid ? ` (${t('you', locale)})` : ''}</Text>
                                   {hasPr ? <Text style={[s.predScore, pExact && { color: Colors.gold }]}>{pr.home} – {pr.away}</Text>
                                           : <Text style={s.predNone}>{t('noPrediction', locale)}</Text>}
                                   {ppts > 0 && <Text style={[s.predPts, pExact && s.predPtsExact]}>+{ppts}</Text>}
@@ -331,17 +348,87 @@ export default function PoolScreen() {
       {tab === 'ranking' && (
         <ScrollView style={s.scroll}>
           <Text style={s.sectionLabel}>{Object.keys(players).length} {t('players', locale)}</Text>
-          {standings.map((p: any, i: number) => (
-            <View key={p.uid} style={[s.rankRow, p.uid === uid && s.rankRowMe]}>
-              <Text style={s.rankPos}>{i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</Text>
-              <Text style={s.rankAvatar}>{p.avatar}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={s.rankName}>{p.name}{p.uid === uid ? ' (tú)' : ''}</Text>
-                <Text style={s.rankSub}>{p.exact} {t('exactCount', locale)}</Text>
+          {standings.map((p: any, i: number) => {
+            const isMe = p.uid === uid;
+            const isOpen = openStats === p.uid;
+            const champ = champion[p.uid];
+            const medals = ['👑','🥈','🥉'];
+            const phaseKeys = ['groups','r32','qf','sf','final'] as const;
+            const phaseLabels: Record<string, string> = {
+              groups: t('groups', locale), r32: t('r32', locale),
+              qf: t('qf', locale), sf: t('sf', locale), final: t('final', locale),
+            };
+            return (
+              <View key={p.uid} style={[s.rankRow, isMe && s.rankRowMe]}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flex: 1 }}
+                  onPress={() => setOpenStats(isOpen ? null : p.uid)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.rankPos}>{i < 3 ? medals[i] : `${i + 1}.`}</Text>
+                  <Text style={s.rankAvatar}>{p.avatar}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={s.rankName} numberOfLines={1}>
+                        {p.name}{isMe ? ` (${t('you', locale)})` : ''}
+                      </Text>
+                      {champ && <Text style={{ fontSize: 14 }}>{flag(champ)}</Text>}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
+                      <Text style={s.rankSub}>🎯 {p.exact} {t('exactCount', locale)}</Text>
+                      {p.played > 0 && <Text style={s.rankSub}>✓ {p.pct}%</Text>}
+                      {p.streak > 1 && <Text style={s.rankSub}>🔥 {p.streak}</Text>}
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={s.rankPts}>{p.total}</Text>
+                    <Text style={[s.rankSub, { fontSize: 10 }]}>{t('points', locale)}</Text>
+                  </View>
+                  <Text style={{ color: Colors.muted, fontSize: 12, marginLeft: 2 }}>{isOpen ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+
+                {/* Expanded stats */}
+                {isOpen && (
+                  <View style={s.statsCard}>
+                    <View style={s.statsRow}>
+                      {[
+                        { label: t('statsPoints', locale), val: p.total, color: Colors.gold },
+                        { label: t('statsExact', locale), val: p.exact, color: Colors.green },
+                        { label: t('statsHits', locale), val: p.hits, color: Colors.blue },
+                        { label: t('statsPct', locale), val: `${p.pct}%`, color: Colors.muted },
+                        { label: t('statsStreak', locale), val: p.streak, color: Colors.purple ?? Colors.muted },
+                      ].map(({ label, val, color }) => (
+                        <View key={label} style={s.statBox}>
+                          <Text style={[s.statVal, { color }]}>{val}</Text>
+                          <Text style={s.statLabel}>{label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    {/* Per-phase breakdown */}
+                    {phaseKeys.filter(ph => p.byPhase[ph]?.played > 0).map(ph => (
+                      <View key={ph} style={s.phaseRow}>
+                        <Text style={s.phaseLabel}>{phaseLabels[ph]}</Text>
+                        <View style={{ flex: 1, height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden', marginHorizontal: 8 }}>
+                          <View style={{
+                            width: `${p.byPhase[ph].played > 0 ? Math.round(p.byPhase[ph].exact / p.byPhase[ph].played * 100) : 0}%`,
+                            height: '100%', backgroundColor: Colors.gold, borderRadius: 3,
+                          }} />
+                        </View>
+                        <Text style={s.phasePts}>{p.byPhase[ph].pts} pts</Text>
+                      </View>
+                    ))}
+                    {champ && (
+                      <View style={s.champRow}>
+                        <Text style={{ fontSize: 11, color: Colors.muted }}>{t('champion', locale)}: </Text>
+                        <Text style={{ fontSize: 14 }}>{flag(champ)}</Text>
+                        <Text style={{ fontSize: 11, color: Colors.ink, fontWeight: '600' }}> {champ}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
               </View>
-              <Text style={s.rankPts}>{p.total} {t('points', locale)}</Text>
-            </View>
-          ))}
+            );
+          })}
           <View style={{ height: 40 }} />
         </ScrollView>
       )}
@@ -711,13 +798,22 @@ const s = StyleSheet.create({
   predPtsExact: { color: Colors.bg, backgroundColor: Colors.gold },
 
   // Ranking
-  rankRow:      { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.sm, gap: Spacing.sm, borderWidth: 1, borderColor: Colors.border },
+  rankRow:      { flexDirection: 'column', backgroundColor: Colors.card, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.sm, borderWidth: 1, borderColor: Colors.border },
   rankRowMe:    { borderColor: Colors.gold },
   rankPos:      { width: 28, textAlign: 'center', fontSize: 16 },
   rankAvatar:   { fontSize: 22 },
-  rankName:     { fontSize: 14, fontWeight: '700', color: Colors.ink },
+  rankName:     { fontSize: 14, fontWeight: '700', color: Colors.ink, flex: 1 },
   rankSub:      { fontSize: 11, color: Colors.muted },
-  rankPts:      { fontSize: 18, fontWeight: '900', color: Colors.gold },
+  rankPts:      { fontSize: 20, fontWeight: '900', color: Colors.gold },
+  statsCard:    { marginTop: Spacing.sm, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
+  statsRow:     { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.sm },
+  statBox:      { alignItems: 'center', flex: 1 },
+  statVal:      { fontSize: 16, fontWeight: '800' },
+  statLabel:    { fontSize: 9, color: Colors.muted, marginTop: 2, textAlign: 'center' },
+  phaseRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  phaseLabel:   { fontSize: 10, color: Colors.muted, width: 60 },
+  phasePts:     { fontSize: 10, color: Colors.muted, width: 40, textAlign: 'right' },
+  champRow:     { flexDirection: 'row', alignItems: 'center', marginTop: Spacing.sm, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
 
   // Groups
   groupCard:    { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.md, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.border },
