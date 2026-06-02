@@ -21,7 +21,7 @@ export const PHASE_PTS: Record<Phase, { exact: number; outcome: number }> = {
 
 export const FLAGS: Record<string, string> = {
   "Argentina":"🇦🇷","Brasil":"🇧🇷","España":"🇪🇸","Francia":"🇫🇷","Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-  "Alemania":"🇩🇪","Portugal":"🇵🇹","Países Bajos":"🇳🇱","Italia":"🇮🇹","Croacia":"🇭🇷",
+  "Alemania":"🇩🇪","Portugal":"🇵🇹","Países Bajos":"🇳🇱","Croacia":"🇭🇷",
   "México":"🇲🇽","EE.UU.":"🇺🇸","Canadá":"🇨🇦","Uruguay":"🇺🇾","Colombia":"🇨🇴",
   "Bélgica":"🇧🇪","Japón":"🇯🇵","Corea del Sur":"🇰🇷","Marruecos":"🇲🇦","Senegal":"🇸🇳",
   "Sudáfrica":"🇿🇦","Rep. Checa":"🇨🇿","Bosnia":"🇧🇦","Suiza":"🇨🇭","Qatar":"🇶🇦",
